@@ -42,7 +42,7 @@
 #include "pendsv.h"
 
 #include "py/obj.h"
-#include "lib/utils/interrupt_char.h"
+#include "shared/runtime/interrupt_char.h"
 #include "irq.h"
 
 #if MICROPY_HW_ENABLE_USB
@@ -308,6 +308,8 @@ int8_t usbd_cdc_receive(usbd_cdc_state_t *cdc_in, size_t len) {
         }
     }
 
+    usbd_cdc_rx_event_callback(cdc);
+
     if ((cdc->flow & USBD_CDC_FLOWCONTROL_RTS) && (usbd_cdc_rx_buffer_full(cdc))) {
         cdc->rx_buf_full = true;
         return USBD_BUSY;
@@ -382,6 +384,10 @@ void usbd_cdc_tx_always(usbd_cdc_itf_t *cdc, const uint8_t *buf, uint32_t len) {
             uint32_t start = HAL_GetTick();
             while (usbd_cdc_tx_buffer_full(cdc) && HAL_GetTick() - start <= 500) {
                 usbd_cdc_try_tx(cdc);
+                if (cdc->base.usbd->pdev->dev_state == USBD_STATE_SUSPENDED) {
+                    // The USB is suspended so buffer will never be drained; exit loop
+                    break;
+                }
                 if (query_irq() == IRQ_STATE_DISABLED) {
                     // IRQs disabled so buffer will never be drained; exit loop
                     break;
